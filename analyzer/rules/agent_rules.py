@@ -1,0 +1,36 @@
+import ast
+from .base import Finding, Rule, Severity, _walk_no_nested_fns
+
+
+def _is_while_true(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.While)
+        and isinstance(node.test, ast.Constant)
+        and node.test.value is True
+    )
+
+
+class UnboundedAgentLoopRule(Rule):
+    rule_id = "AI_AGENT_001"
+    title = "Agent workflow has no maximum step limit"
+    rationale = (
+        "Unbounded agent loops (while True) can run indefinitely, exhausting "
+        "tokens and budget. Define an explicit MAX_STEPS or use a bounded range loop."
+    )
+    severity = Severity.ERROR
+
+    def check(self, tree: ast.AST, filepath: str) -> list[Finding]:
+        findings = []
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for child in _walk_no_nested_fns(node):
+                if _is_while_true(child):
+                    findings.append(self._finding(
+                        f"Function '{node.name}' contains an unbounded 'while True' loop "
+                        f"with no step limit.",
+                        filepath,
+                        child.lineno,
+                    ))
+                    break
+        return findings
