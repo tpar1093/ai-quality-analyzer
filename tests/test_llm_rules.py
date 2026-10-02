@@ -1,6 +1,11 @@
 import ast
 import pytest
-from analyzer.rules.llm_rules import ModelNotConfiguredRule, TemperatureNotConfiguredRule, NoErrorHandlingRule
+from analyzer.rules.llm_rules import (
+    ModelNotConfiguredRule,
+    TemperatureNotConfiguredRule,
+    NoErrorHandlingRule,
+    NoMaxTokensLimitRule,
+)
 
 
 def parse(code: str) -> ast.AST:
@@ -136,3 +141,48 @@ def answer(question):
 """
         findings = self.rule.check(parse(code), "test.py")
         assert findings[0].line == 2
+
+
+class TestNoMaxTokensLimitRule:
+    rule = NoMaxTokensLimitRule()
+
+    def test_flags_api_call_missing_max_tokens(self):
+        code = """
+response = client.messages.create(
+    model="claude-sonnet-5",
+    messages=[{"role": "user", "content": "hi"}],
+)
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert len(findings) == 1
+        assert findings[0].rule_id == "AI_LLM_004"
+        assert findings[0].severity == "warning"
+
+    def test_no_finding_when_max_tokens_present(self):
+        code = """
+response = client.messages.create(
+    model="claude-sonnet-5",
+    max_tokens=512,
+    messages=[{"role": "user", "content": "hi"}],
+)
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert findings == []
+
+    def test_no_finding_when_max_completion_tokens_present(self):
+        code = """
+response = client.chat.completions.create(
+    model="gpt-4",
+    max_completion_tokens=512,
+    messages=[{"role": "user", "content": "hi"}],
+)
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert findings == []
+
+    def test_no_finding_for_non_llm_call(self):
+        code = """
+record = db.records.create(name="test", value=42)
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert findings == []

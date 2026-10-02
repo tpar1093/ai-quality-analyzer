@@ -6,7 +6,7 @@ Static analysis for LLM and RAG applications — rule-based quality checking ins
 
 Scans Python source files using AST analysis and reports violations as structured findings with rule ID, severity, rationale, and location.
 
-![Demo: scanning a non-compliant RAG app finds 10 issues; the compliant version passes clean](demo.gif)
+![Demo: scanning a non-compliant RAG app finds 11 issues; the compliant version passes clean](demo.gif)
 
 ---
 
@@ -17,6 +17,7 @@ Scans Python source files using AST analysis and reports violations as structure
 | `AI_LLM_001` | LLM model identifier not explicitly configured | ERROR |
 | `AI_LLM_002` | LLM temperature not explicitly configured | WARNING |
 | `AI_LLM_003` | No error handling around LLM calls | WARNING |
+| `AI_LLM_004` | LLM call has no max_tokens limit | WARNING |
 | `AI_OUTPUT_001` | Machine-consumed LLM output lacks structured schema | WARNING |
 | `AI_RAG_001` | Retrieved documents strip source metadata | ERROR |
 | `AI_RAG_002` | Generated answer missing source attribution | WARNING |
@@ -96,6 +97,9 @@ python -m analyzer scan ./examples/bad_app
 [WARNING] AI_LLM_003: No error handling around LLM calls
   ...
 
+[WARNING] AI_LLM_004: LLM call has no max_tokens limit
+  ...
+
 [ERROR] AI_RAG_001: Retrieved documents strip source metadata
   Location : examples/bad_app/rag_app.py:40
   Finding  : List comprehension over 'raw_docs' discards document metadata.
@@ -104,7 +108,7 @@ python -m analyzer scan ./examples/bad_app
 [WARNING] AI_RAG_003: Unbounded retrieval
   ...
 
-Total: 10 finding(s)
+Total: 11 finding(s)
 ```
 
 The `examples/good_app/` version of the same application passes all checks.
@@ -117,7 +121,7 @@ The `examples/good_app/` version of the same application passes all checks.
 analyzer/
 ├── rules/
 │   ├── base.py          # Finding dataclass, Rule ABC, AST walk helper
-│   ├── llm_rules.py     # AI_LLM_001, AI_LLM_002, AI_LLM_003
+│   ├── llm_rules.py     # AI_LLM_001, AI_LLM_002, AI_LLM_003, AI_LLM_004
 │   ├── output_rules.py  # AI_OUTPUT_001
 │   ├── rag_rules.py     # AI_RAG_001, AI_RAG_002, AI_RAG_003
 │   ├── agent_rules.py   # AI_AGENT_001

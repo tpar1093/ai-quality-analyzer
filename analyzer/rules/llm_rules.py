@@ -112,3 +112,30 @@ class NoErrorHandlingRule(Rule):
                     llm_calls[0].lineno,
                 ))
         return findings
+
+
+class NoMaxTokensLimitRule(Rule):
+    rule_id = "AI_LLM_004"
+    title = "LLM call has no max_tokens limit"
+    rationale = (
+        "Without an explicit max_tokens (or max_completion_tokens) cap, a single "
+        "call's cost and latency are unbounded — a model producing an unexpectedly "
+        "long response can consume far more budget than intended with no ceiling. "
+        "Pin an explicit limit sized to the expected response."
+    )
+    severity = Severity.WARNING
+
+    def check(self, tree: ast.AST, filepath: str) -> list[Finding]:
+        findings = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if not _is_llm_call(node):
+                continue
+            if not (_get_kwarg_names(node) & {"max_tokens", "max_completion_tokens"}):
+                findings.append(self._finding(
+                    "LLM call is missing a 'max_tokens='/'max_completion_tokens=' limit.",
+                    filepath,
+                    getattr(node, "lineno", None),
+                ))
+        return findings

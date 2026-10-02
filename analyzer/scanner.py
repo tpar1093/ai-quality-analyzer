@@ -11,7 +11,12 @@ def _is_excluded_dir(name: str) -> bool:
     return name in EXCLUDED_DIR_NAMES or name.startswith(".")
 
 from .rules.base import Finding, Rule
-from .rules.llm_rules import ModelNotConfiguredRule, TemperatureNotConfiguredRule, NoErrorHandlingRule
+from .rules.llm_rules import (
+    ModelNotConfiguredRule,
+    TemperatureNotConfiguredRule,
+    NoErrorHandlingRule,
+    NoMaxTokensLimitRule,
+)
 from .rules.output_rules import UnstructuredOutputRule
 from .rules.rag_rules import MetadataStrippedRule, SourceAttributionMissingRule, UnboundedRetrievalRule
 from .rules.agent_rules import UnboundedAgentLoopRule
@@ -22,6 +27,7 @@ ALL_RULES: list[Rule] = [
     ModelNotConfiguredRule(),
     TemperatureNotConfiguredRule(),
     NoErrorHandlingRule(),
+    NoMaxTokensLimitRule(),
     UnstructuredOutputRule(),
     MetadataStrippedRule(),
     SourceAttributionMissingRule(),

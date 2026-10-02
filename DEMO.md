@@ -28,7 +28,7 @@ Open `examples/bad_app/rag_app.py` and scroll through it.
 ai-quality-analyzer scan ./examples/bad_app
 ```
 
-> "Ten findings. Each one has a rule ID, a severity, the exact file and line,
+> "Eleven findings. Each one has a rule ID, a severity, the exact file and line,
 > and — this is the part I care about — a rationale. Not just 'this is bad,'
 > but *why* it's a problem: [pick one, e.g. the hardcoded API key] a literal
 > credential gets baked into git history permanently, and rotating the key
@@ -53,7 +53,7 @@ Rerun:
 ai-quality-analyzer scan ./examples/bad_app
 ```
 
-> "Down to nine findings — AI_LLM_001 is gone. This is meant to run as a
+> "Down to ten findings — AI_LLM_001 is gone. This is meant to run as a
 > pre-commit or CI step, catching exactly this kind of thing before it ships."
 
 ### 4. Show the compliant version (20s)

@@ -6,6 +6,7 @@ Violations:
   AI_LLM_001  — no model= in messages.create()
   AI_LLM_002  — no temperature= in messages.create()
   AI_LLM_003  — answer() has no try/except around the LLM call
+  AI_LLM_004  — no max_tokens= limit on the LLM call
   AI_OUTPUT_001 — raw string returned, no json.loads or schema
   AI_RAG_001  — list comprehension strips source metadata
   AI_RAG_002  — answer() returns raw response text, no sources
@@ -45,9 +46,9 @@ def answer(question: str, docs: list) -> str:
     # AI_LLM_001: missing model=
     # AI_LLM_002: missing temperature=
     # AI_LLM_003: no try/except around this call
+    # AI_LLM_004: missing max_tokens= limit
     # AI_PROMPT_001: long system prompt embedded directly in the call
     response = client.messages.create(
-        max_tokens=256,
         system=(
             "You are a customer support assistant for an e-commerce platform. "
             "Always be polite, concise, and never make promises about refunds or "

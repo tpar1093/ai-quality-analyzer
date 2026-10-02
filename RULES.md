@@ -70,6 +70,13 @@ Each entry: **what it checks** (exact AST pattern) → **fix** → **rationale**
 - **Rationale:** "LLM APIs fail more often and in more varied ways than typical REST calls — rate limits, timeouts, content filtering — and an uncaught exception from a single LLM call takes down the entire request path around it. Wrap the call in a try/except for the provider's error types."
 - **Scope note:** function-level, like AI_OUTPUT_001 and AI_RAG_002 — it checks that *a* try/except exists somewhere in the function, not that it specifically wraps the LLM call. A `try/except` guarding an unrelated line would satisfy the check. Same class of simplification the rest of this codebase already accepts for low false-positive-rate heuristics.
 
+### AI_LLM_004 — LLM call has no max_tokens limit
+- **Severity:** WARNING
+- **Checks:** an LLM constructor or API call (same `_is_llm_call` detection as AI_LLM_001/002) missing a `max_tokens=` or `max_completion_tokens=` kwarg.
+- **Fix:** `client.messages.create(model=..., max_tokens=512, ...)`.
+- **Rationale:** "Without an explicit max_tokens (or max_completion_tokens) cap, a single call's cost and latency are unbounded — a model producing an unexpectedly long response can consume far more budget than intended with no ceiling. Pin an explicit limit sized to the expected response."
+- **Scope note:** this is the static-analyzable slice of "cost governance" — a per-call token ceiling. A per-session or per-user cost budget is inherently a runtime concern (it requires tracking cumulative spend across calls), not something a single-file AST pass can check; that's deliberately out of scope here.
+
 ### AI_RAG_003 — Unbounded retrieval
 - **Severity:** WARNING
 - **Checks:** a call to `.similarity_search(...)`, `.similarity_search_with_score(...)`, `.similarity_search_with_relevance_scores(...)`, or `.max_marginal_relevance_search(...)` with no `k=`/`top_k=` keyword argument.
