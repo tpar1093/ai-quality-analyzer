@@ -7,7 +7,7 @@ LLM_CONSTRUCTORS: set[str] = {
     "ChatGroq", "ChatCohere", "LlamaCpp",
 }
 
-LLM_API_METHODS: set[str] = {"create", "invoke", "generate", "run", "complete"}
+LLM_API_METHODS: set[str] = {"create", "invoke", "generate", "run", "complete", "chat"}
 
 
 def _get_kwarg_names(call: ast.Call) -> set[str]:

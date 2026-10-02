@@ -186,3 +186,11 @@ record = db.records.create(name="test", value=42)
 """
         findings = self.rule.check(parse(code), "test.py")
         assert findings == []
+
+    def test_flags_ollama_style_chat_call_missing_max_tokens(self):
+        code = """
+response = ollama.chat(model="llama3.2", messages=messages, tools=TOOLS)
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert len(findings) == 1
+        assert findings[0].rule_id == "AI_LLM_004"

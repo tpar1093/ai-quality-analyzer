@@ -80,3 +80,44 @@ while True:
 """
         findings = self.rule.check(parse(code), "test.py")
         assert findings == []
+
+    def test_no_finding_for_repl_loop_gated_by_input(self):
+        code = """
+def run_agent():
+    while True:
+        user_input = input("You: ").strip()
+        if user_input == "quit":
+            break
+        result = call_llm(user_input)
+        print(result)
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert findings == []
+
+    def test_flags_inner_llm_loop_even_when_outer_repl_loop_is_exempt(self):
+        code = """\
+def run_agent():
+    while True:
+        user_input = input("You: ").strip()
+        if user_input == "quit":
+            break
+        while True:
+            response = call_llm(user_input)
+            if not response.tool_calls:
+                break
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert len(findings) == 1
+        assert findings[0].rule_id == "AI_AGENT_001"
+        assert findings[0].line == 6
+
+    def test_flags_both_unbounded_loops_in_same_function(self):
+        code = """
+def run_agent():
+    while True:
+        call_llm("a")
+    while True:
+        call_llm("b")
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert len(findings) == 2

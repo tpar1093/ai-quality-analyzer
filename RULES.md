@@ -13,9 +13,10 @@ Each entry: **what it checks** (exact AST pattern) → **fix** → **rationale**
 
 ### AI_LLM_001 — LLM model identifier not explicitly configured
 - **Severity:** ERROR
-- **Checks:** an LLM constructor call (`ChatOpenAI`, `ChatAnthropic`, etc.) or a raw SDK call with a `messages=`/`prompt=` kwarg, missing a `model=` kwarg.
+- **Checks:** an LLM constructor call (`ChatOpenAI`, `ChatAnthropic`, etc.) or a raw SDK call to `.create()`, `.invoke()`, `.generate()`, `.run()`, `.complete()`, or `.chat()` carrying a `messages=`/`prompt=`/`inputs=`/`input=` kwarg, missing a `model=` kwarg.
 - **Fix:** pass `model="claude-sonnet-5"` (or equivalent) explicitly.
 - **Rationale:** "Relying on a provider default model causes silent behavior changes when provider defaults are updated. Always pin the model name."
+- **Validated against real code:** `.chat()` was added to the method allowlist after testing against a real Ollama-based agent (`ollama.chat(model=..., messages=...)`) — the original allowlist (`create`/`invoke`/`generate`/`run`/`complete`) missed it entirely, leaving AI_LLM_001/002/003/004 blind to that call. The required `messages=`-style kwarg still guards against false positives on unrelated `.chat()` methods (a chat-room API, say).
 
 ### AI_LLM_002 — LLM temperature not explicitly configured
 - **Severity:** WARNING
@@ -31,9 +32,10 @@ Each entry: **what it checks** (exact AST pattern) → **fix** → **rationale**
 
 ### AI_RAG_001 — Retrieved documents strip source metadata
 - **Severity:** ERROR
-- **Checks:** a list comprehension that pulls exactly one field off each item (`[d["content"] for d in docs]` or `[d.page_content for d in docs]`).
+- **Checks:** a list comprehension that pulls exactly one field off each item, where that field's name is content-like — `content`, `page_content`, `text`, `chunk`, or `body` (`[d["content"] for d in docs]` or `[d.page_content for d in docs]`).
 - **Fix:** keep the whole document object, or build a dict that retains `source`/`metadata`.
 - **Rationale:** "Dropping metadata (source, chunk_id, score) from retrieved documents prevents downstream attribution, filtering, and debugging."
+- **Validated against real code:** testing against a real scraper (`[t["title"] for t in item.get("reviewsTags", [])]`) surfaced a false positive — single-field list comprehension is an extremely common Python idiom with nothing to do with RAG. Originally the rule matched *any* field name; it's now restricted to content-like field names, since that's the actual signal distinguishing "a RAG document's text is being extracted, discarding its metadata" from "an ordinary data transform." A Subscript with a non-literal key (`d[some_var]`) is also no longer matched — the field name can't be checked statically, so it's excluded rather than guessed at.
 
 ### AI_RAG_002 — Generated answer missing source attribution
 - **Severity:** WARNING
@@ -43,9 +45,10 @@ Each entry: **what it checks** (exact AST pattern) → **fix** → **rationale**
 
 ### AI_AGENT_001 — Agent workflow has no maximum step limit
 - **Severity:** ERROR
-- **Checks:** a literal `while True:` inside a function body (not inside a nested function/class — traversal stops at those boundaries).
+- **Checks:** every literal `while True:` inside a function body (not inside a nested function/class — traversal stops at those boundaries), *except* a loop that blocks on `input()` somewhere in its own body.
 - **Fix:** replace with `for step in range(MAX_STEPS):` or an explicit counter with a bounded exit condition.
 - **Rationale:** "Unbounded agent loops (while True) can run indefinitely, exhausting tokens and budget. Define an explicit MAX_STEPS or use a bounded range loop."
+- **Validated against real code:** a real interactive agent (`while True: user_input = input(...); ...; while True: response = llm.chat(...)`) exposed two bugs at once. First, the rule reported only the *first* `while True:` found per function — so the outer REPL loop (bounded, each iteration gated by a human typing) got flagged while the inner, genuinely unbounded tool-calling loop never did. That early-exit is now removed; every qualifying loop in a function is reported. Second, "bounded by a human typing" and "bounded by nothing" are different risk profiles, so a loop that blocks on `input()` anywhere in its body is now exempted — this is a documented heuristic, not perfect: a loop with a *nested* inner loop that happens to call `input()` somewhere deep inside would also be exempted at the outer level, since the check doesn't stop at nested `while`/`for` boundaries (only at nested function/class boundaries, same as elsewhere in this codebase).
 
 ---
 

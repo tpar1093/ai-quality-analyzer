@@ -3,16 +3,24 @@ from .base import Finding, Rule, Severity
 from .llm_rules import _is_llm_api_call
 
 
-def _is_single_field_access(elt: ast.expr, var_name: str) -> bool:
-    """True if elt is exactly one field/key access on var_name.
+CONTENT_FIELD_NAMES: set[str] = {"content", "page_content", "text", "chunk", "body"}
+
+
+def _extracted_field_name(elt: ast.expr, var_name: str) -> str | None:
+    """Return the field name extracted by elt if it is exactly one field/key
+    access on var_name, else None.
     Matches doc["content"] (Subscript) and doc.page_content (Attribute).
-    Does NOT match: doc, {"content": doc["content"], ...}, f"[{doc.source}] ..."
+    Does NOT match: doc, {"content": doc["content"], ...}, f"[{doc.source}] ...",
+    or a Subscript with a non-literal key (doc[some_var]).
     """
-    if isinstance(elt, ast.Subscript) and isinstance(elt.value, ast.Name):
-        return elt.value.id == var_name
-    if isinstance(elt, ast.Attribute) and isinstance(elt.value, ast.Name):
-        return elt.value.id == var_name
-    return False
+    if isinstance(elt, ast.Subscript) and isinstance(elt.value, ast.Name) and elt.value.id == var_name:
+        key = elt.slice
+        if isinstance(key, ast.Constant) and isinstance(key.value, str):
+            return key.value
+        return None
+    if isinstance(elt, ast.Attribute) and isinstance(elt.value, ast.Name) and elt.value.id == var_name:
+        return elt.attr
+    return None
 
 
 def _is_raw_llm_string(node: ast.expr) -> bool:
@@ -60,7 +68,8 @@ class MetadataStrippedRule(Rule):
             if not isinstance(gen.target, ast.Name):
                 continue
             var_name = gen.target.id
-            if _is_single_field_access(node.elt, var_name):
+            field = _extracted_field_name(node.elt, var_name)
+            if field is not None and field.lower() in CONTENT_FIELD_NAMES:
                 iter_name = gen.iter.id if isinstance(gen.iter, ast.Name) else "docs"
                 findings.append(self._finding(
                     f"List comprehension over '{iter_name}' discards document metadata.",

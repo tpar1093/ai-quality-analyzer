@@ -49,6 +49,27 @@ docs = [f"[{d.source}] {d.content}" for d in raw_docs]
         findings = self.rule.check(parse(code), "test.py")
         assert findings == []
 
+    def test_no_finding_for_non_content_field(self):
+        code = """
+tags = [t["title"] for t in item.get("reviewsTags", [])]
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert findings == []
+
+    def test_no_finding_for_id_field(self):
+        code = """
+ids = [d["id"] for d in raw_docs]
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert findings == []
+
+    def test_flags_text_field_synonym(self):
+        code = """
+docs = [d["text"] for d in raw_docs]
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert len(findings) == 1
+
 
 class TestSourceAttributionMissingRule:
     rule = SourceAttributionMissingRule()
