@@ -6,6 +6,8 @@ Static analysis for LLM and RAG applications — rule-based quality checking ins
 
 Scans Python source files using AST analysis and reports violations as structured findings with rule ID, severity, rationale, and location.
 
+![Demo: scanning a non-compliant RAG app finds 10 issues; the compliant version passes clean](demo.gif)
+
 ---
 
 ## Rules
@@ -148,8 +150,19 @@ The `messages=` kwarg requirement in the second check prevents false positives o
 Requires Python 3.11+.
 
 ```bash
-pip install pytest          # only dev dependency
-python -m pytest -v         # run the 56-test suite
+pip install -e ".[dev]"      # installs pytest + the ai-quality-analyzer CLI
+python -m pytest -v          # run the test suite
+```
+
+---
+
+## Demo
+
+See [`DEMO.md`](DEMO.md) for a live walkthrough script (talking points + commands, interview-ready). The GIF at the top of this README is generated from [`demo.tape`](demo.tape) — regenerate it after any output-affecting change with:
+
+```bash
+brew install vhs            # one-time; scripted terminal recorder
+vhs demo.tape                # writes demo.gif
 ```
 
 ---
