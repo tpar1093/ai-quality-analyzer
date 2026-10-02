@@ -2,9 +2,9 @@ import ast
 from pathlib import Path
 
 from .rules.base import Finding, Rule
-from .rules.llm_rules import ModelNotConfiguredRule, TemperatureNotConfiguredRule
+from .rules.llm_rules import ModelNotConfiguredRule, TemperatureNotConfiguredRule, NoErrorHandlingRule
 from .rules.output_rules import UnstructuredOutputRule
-from .rules.rag_rules import MetadataStrippedRule, SourceAttributionMissingRule
+from .rules.rag_rules import MetadataStrippedRule, SourceAttributionMissingRule, UnboundedRetrievalRule
 from .rules.agent_rules import UnboundedAgentLoopRule
 from .rules.security_rules import HardcodedCredentialRule
 from .rules.prompt_rules import HardcodedSystemPromptRule
@@ -12,9 +12,11 @@ from .rules.prompt_rules import HardcodedSystemPromptRule
 ALL_RULES: list[Rule] = [
     ModelNotConfiguredRule(),
     TemperatureNotConfiguredRule(),
+    NoErrorHandlingRule(),
     UnstructuredOutputRule(),
     MetadataStrippedRule(),
     SourceAttributionMissingRule(),
+    UnboundedRetrievalRule(),
     UnboundedAgentLoopRule(),
     HardcodedCredentialRule(),
     HardcodedSystemPromptRule(),

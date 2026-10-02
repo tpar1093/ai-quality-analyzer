@@ -83,14 +83,16 @@ def test_scan_directory_skips_non_python_files(tmp_path: Path):
     assert findings == []
 
 
-def test_all_rules_list_has_eight_entries():
-    assert len(ALL_RULES) == 8
+def test_all_rules_list_has_ten_entries():
+    assert len(ALL_RULES) == 10
     rule_ids = [r.rule_id for r in ALL_RULES]
     assert "AI_LLM_001" in rule_ids
     assert "AI_LLM_002" in rule_ids
+    assert "AI_LLM_003" in rule_ids
     assert "AI_OUTPUT_001" in rule_ids
     assert "AI_RAG_001" in rule_ids
     assert "AI_RAG_002" in rule_ids
+    assert "AI_RAG_003" in rule_ids
     assert "AI_AGENT_001" in rule_ids
     assert "AI_SECRET_001" in rule_ids
     assert "AI_PROMPT_001" in rule_ids
@@ -98,15 +100,15 @@ def test_all_rules_list_has_eight_entries():
 
 # --- Integration tests against examples/ (skip if not yet created) ---
 
-def test_bad_app_triggers_all_eight_rules():
+def test_bad_app_triggers_all_ten_rules():
     bad_app = Path(__file__).parent.parent / "examples" / "bad_app"
     if not bad_app.exists():
         pytest.skip("examples/bad_app not yet created")
     findings = scan_directory(bad_app)
     rule_ids = {f.rule_id for f in findings}
     assert rule_ids == {
-        "AI_LLM_001", "AI_LLM_002", "AI_OUTPUT_001",
-        "AI_RAG_001", "AI_RAG_002", "AI_AGENT_001",
+        "AI_LLM_001", "AI_LLM_002", "AI_LLM_003", "AI_OUTPUT_001",
+        "AI_RAG_001", "AI_RAG_002", "AI_RAG_003", "AI_AGENT_001",
         "AI_SECRET_001", "AI_PROMPT_001",
     }
 

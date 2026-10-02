@@ -1,5 +1,5 @@
 import ast
-from .base import Finding, Rule, Severity
+from .base import Finding, Rule, Severity, _walk_no_nested_fns
 
 LLM_CONSTRUCTORS: set[str] = {
     "ChatOpenAI", "AzureChatOpenAI", "ChatAnthropic", "ChatBedrock",
@@ -78,5 +78,37 @@ class TemperatureNotConfiguredRule(Rule):
                     "LLM call is missing 'temperature=' argument.",
                     filepath,
                     getattr(node, "lineno", None),
+                ))
+        return findings
+
+
+class NoErrorHandlingRule(Rule):
+    rule_id = "AI_LLM_003"
+    title = "No error handling around LLM calls"
+    rationale = (
+        "LLM APIs fail more often and in more varied ways than typical REST calls — "
+        "rate limits, timeouts, content filtering — and an uncaught exception from a "
+        "single LLM call takes down the entire request path around it. Wrap the call "
+        "in a try/except for the provider's error types."
+    )
+    severity = Severity.WARNING
+
+    def check(self, tree: ast.AST, filepath: str) -> list[Finding]:
+        findings = []
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            llm_calls = [
+                n for n in _walk_no_nested_fns(node)
+                if isinstance(n, ast.Call) and _is_llm_api_call(n)
+            ]
+            if not llm_calls:
+                continue
+            has_try = any(isinstance(n, ast.Try) for n in _walk_no_nested_fns(node))
+            if not has_try:
+                findings.append(self._finding(
+                    f"Function '{node.name}' makes an LLM call with no try/except in scope.",
+                    filepath,
+                    llm_calls[0].lineno,
                 ))
         return findings

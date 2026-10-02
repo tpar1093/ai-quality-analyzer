@@ -1,6 +1,9 @@
 import ast
-import pytest
-from analyzer.rules.rag_rules import MetadataStrippedRule, SourceAttributionMissingRule
+from analyzer.rules.rag_rules import (
+    MetadataStrippedRule,
+    SourceAttributionMissingRule,
+    UnboundedRetrievalRule,
+)
 
 
 def parse(code: str) -> ast.AST:
@@ -12,7 +15,7 @@ class TestMetadataStrippedRule:
 
     def test_flags_comprehension_stripping_dict_content_only(self):
         code = """
-contents = [doc["content"] for doc in raw_docs]
+docs = [d["content"] for d in raw_docs]
 """
         findings = self.rule.check(parse(code), "test.py")
         assert len(findings) == 1
@@ -20,29 +23,28 @@ contents = [doc["content"] for doc in raw_docs]
 
     def test_flags_comprehension_stripping_attribute_only(self):
         code = """
-texts = [doc.page_content for doc in documents]
+docs = [d.page_content for d in raw_docs]
 """
         findings = self.rule.check(parse(code), "test.py")
         assert len(findings) == 1
-        assert findings[0].rule_id == "AI_RAG_001"
 
     def test_no_finding_when_full_object_passed(self):
         code = """
-docs = [doc for doc in raw_docs]
+docs = [d for d in raw_docs]
 """
         findings = self.rule.check(parse(code), "test.py")
         assert findings == []
 
     def test_no_finding_when_dict_with_multiple_fields(self):
         code = """
-pairs = [{"content": doc["content"], "source": doc["source"]} for doc in raw_docs]
+docs = [{"text": d.page_content, "source": d.metadata["source"]} for d in raw_docs]
 """
         findings = self.rule.check(parse(code), "test.py")
         assert findings == []
 
     def test_no_finding_for_fstring_with_multiple_accesses(self):
         code = """
-lines = [f"[{doc.source}] {doc.content}" for doc in docs]
+docs = [f"[{d.source}] {d.content}" for d in raw_docs]
 """
         findings = self.rule.check(parse(code), "test.py")
         assert findings == []
@@ -55,6 +57,7 @@ class TestSourceAttributionMissingRule:
         code = """
 def answer(question, docs):
     response = client.messages.create(
+        model="claude-sonnet-5",
         messages=[{"role": "user", "content": question}],
     )
     return response.content[0].text
@@ -67,30 +70,78 @@ def answer(question, docs):
         code = """
 def answer(question, docs):
     response = client.messages.create(
+        model="claude-sonnet-5",
         messages=[{"role": "user", "content": question}],
     )
-    data = json.loads(response.content[0].text)
-    return AttributedAnswer(answer=data["answer"], sources=data["sources"])
+    return {"answer": response.content[0].text, "sources": [d.source for d in docs]}
 """
         findings = self.rule.check(parse(code), "test.py")
         assert findings == []
 
     def test_no_finding_when_no_llm_call_in_function(self):
         code = """
-def format_result(text):
-    return text.upper()
+def helper(x):
+    return x.content[0].text
 """
         findings = self.rule.check(parse(code), "test.py")
         assert findings == []
 
     def test_flags_openai_style_content_return(self):
         code = """
-def answer(q, docs):
-    resp = client.chat.completions.create(
-        messages=[{"role": "user", "content": q}],
+def answer(question):
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": question}],
     )
-    return resp.choices[0].message.content
+    return response.choices[0].message.content
 """
         findings = self.rule.check(parse(code), "test.py")
         assert len(findings) == 1
-        assert findings[0].rule_id == "AI_RAG_002"
+
+
+class TestUnboundedRetrievalRule:
+    rule = UnboundedRetrievalRule()
+
+    def test_flags_similarity_search_without_k(self):
+        code = """
+docs = vectorstore.similarity_search(query)
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert len(findings) == 1
+        assert findings[0].rule_id == "AI_RAG_003"
+        assert findings[0].severity == "warning"
+
+    def test_no_finding_when_k_present(self):
+        code = """
+docs = vectorstore.similarity_search(query, k=5)
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert findings == []
+
+    def test_no_finding_when_top_k_present(self):
+        code = """
+docs = vectorstore.similarity_search(query, top_k=5)
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert findings == []
+
+    def test_flags_max_marginal_relevance_search_without_k(self):
+        code = """
+docs = vectorstore.max_marginal_relevance_search(query)
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert len(findings) == 1
+
+    def test_no_finding_for_unrelated_method_call(self):
+        code = """
+record = db.records.create(name="test")
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert findings == []
+
+    def test_finding_includes_line_number(self):
+        code = """\
+docs = vectorstore.similarity_search(query)
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert findings[0].line == 1

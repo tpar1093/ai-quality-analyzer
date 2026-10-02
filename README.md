@@ -14,14 +14,16 @@ Scans Python source files using AST analysis and reports violations as structure
 |---|---|---|
 | `AI_LLM_001` | LLM model identifier not explicitly configured | ERROR |
 | `AI_LLM_002` | LLM temperature not explicitly configured | WARNING |
+| `AI_LLM_003` | No error handling around LLM calls | WARNING |
 | `AI_OUTPUT_001` | Machine-consumed LLM output lacks structured schema | WARNING |
 | `AI_RAG_001` | Retrieved documents strip source metadata | ERROR |
 | `AI_RAG_002` | Generated answer missing source attribution | WARNING |
+| `AI_RAG_003` | Unbounded retrieval (no k= limit) | WARNING |
 | `AI_AGENT_001` | Agent workflow has no maximum step limit | ERROR |
 | `AI_SECRET_001` | Credential passed as a hardcoded string literal | ERROR |
 | `AI_PROMPT_001` | System prompt is hardcoded inline rather than externalized | WARNING |
 
-Full spec for every rule (what it checks, the fix, the exact rationale) lives in [`RULES.md`](RULES.md), including rules not yet implemented.
+Full spec for every rule (what it checks, the fix, the exact rationale) lives in [`RULES.md`](RULES.md).
 
 ---
 
@@ -78,7 +80,7 @@ python -m analyzer scan ./examples/bad_app
 
 ```
 [ERROR] AI_LLM_001: LLM model identifier not explicitly configured
-  Location : examples/bad_app/rag_app.py:31
+  Location : examples/bad_app/rag_app.py:49
   Finding  : LLM call is missing required 'model=' argument.
   Rationale: Relying on a provider default model causes silent behavior changes
              when provider defaults are updated. Always pin the model name.
@@ -86,12 +88,18 @@ python -m analyzer scan ./examples/bad_app
 [WARNING] AI_LLM_002: LLM temperature not explicitly configured
   ...
 
+[WARNING] AI_LLM_003: No error handling around LLM calls
+  ...
+
 [ERROR] AI_RAG_001: Retrieved documents strip source metadata
-  Location : examples/bad_app/rag_app.py:24
+  Location : examples/bad_app/rag_app.py:40
   Finding  : List comprehension over 'raw_docs' discards document metadata.
   ...
 
-Total: 8 finding(s)
+[WARNING] AI_RAG_003: Unbounded retrieval
+  ...
+
+Total: 10 finding(s)
 ```
 
 The `examples/good_app/` version of the same application passes all checks.
@@ -104,9 +112,9 @@ The `examples/good_app/` version of the same application passes all checks.
 analyzer/
 ├── rules/
 │   ├── base.py          # Finding dataclass, Rule ABC, AST walk helper
-│   ├── llm_rules.py     # AI_LLM_001, AI_LLM_002
+│   ├── llm_rules.py     # AI_LLM_001, AI_LLM_002, AI_LLM_003
 │   ├── output_rules.py  # AI_OUTPUT_001
-│   ├── rag_rules.py     # AI_RAG_001, AI_RAG_002
+│   ├── rag_rules.py     # AI_RAG_001, AI_RAG_002, AI_RAG_003
 │   ├── agent_rules.py   # AI_AGENT_001
 │   ├── security_rules.py # AI_SECRET_001
 │   └── prompt_rules.py  # AI_PROMPT_001

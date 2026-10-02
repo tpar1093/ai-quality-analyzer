@@ -103,3 +103,40 @@ class SourceAttributionMissingRule(Rule):
                         ))
                         break
         return findings
+
+
+class UnboundedRetrievalRule(Rule):
+    rule_id = "AI_RAG_003"
+    title = "Unbounded retrieval"
+    rationale = (
+        "Unbounded retrieval means an unbounded, unpredictable amount of context gets "
+        "stuffed into the prompt — cost and latency vary per query with no ceiling, the "
+        "same failure shape as an unbounded agent loop. Pass an explicit k= limit."
+    )
+    severity = Severity.WARNING
+
+    RETRIEVER_METHODS: set[str] = {
+        "similarity_search",
+        "similarity_search_with_score",
+        "similarity_search_with_relevance_scores",
+        "max_marginal_relevance_search",
+    }
+
+    def check(self, tree: ast.AST, filepath: str) -> list[Finding]:
+        findings = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if not isinstance(node.func, ast.Attribute):
+                continue
+            if node.func.attr not in self.RETRIEVER_METHODS:
+                continue
+            kwarg_names = {kw.arg for kw in node.keywords if kw.arg is not None}
+            if kwarg_names & {"k", "top_k"}:
+                continue
+            findings.append(self._finding(
+                f"Retriever call '.{node.func.attr}(...)' has no 'k=' limit.",
+                filepath,
+                getattr(node, "lineno", None),
+            ))
+        return findings

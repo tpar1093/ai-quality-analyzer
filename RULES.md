@@ -63,18 +63,22 @@ Each entry: **what it checks** (exact AST pattern) → **fix** → **rationale**
 - **Rationale:** "System prompts are edited far more often than application logic — by prompt engineers, during A/B tests, or in response to model behavior changes — and a prompt embedded directly in a function call has no version history independent of the surrounding code, cannot be diffed or rolled back on its own, and forces a full code review and deploy for a wording change. Externalize it to a dedicated file or a prompts module loaded at runtime."
 - **Scope note:** the 120-char threshold is a deliberate false-positive guard — a one-line `system="You are a helpful assistant."` isn't a governance problem worth flagging; a growing prompt block is. Threshold is a class constant, easy to tune later.
 
+### AI_LLM_003 — No error handling around LLM calls
+- **Severity:** WARNING
+- **Checks:** a function that contains an LLM API call, but contains no `ast.Try` node anywhere in its own body (nested functions excluded).
+- **Fix:** wrap the call in `try/except (RateLimitError, APITimeoutError, APIError)`.
+- **Rationale:** "LLM APIs fail more often and in more varied ways than typical REST calls — rate limits, timeouts, content filtering — and an uncaught exception from a single LLM call takes down the entire request path around it. Wrap the call in a try/except for the provider's error types."
+- **Scope note:** function-level, like AI_OUTPUT_001 and AI_RAG_002 — it checks that *a* try/except exists somewhere in the function, not that it specifically wraps the LLM call. A `try/except` guarding an unrelated line would satisfy the check. Same class of simplification the rest of this codebase already accepts for low false-positive-rate heuristics.
+
+### AI_RAG_003 — Unbounded retrieval
+- **Severity:** WARNING
+- **Checks:** a call to `.similarity_search(...)`, `.similarity_search_with_score(...)`, `.similarity_search_with_relevance_scores(...)`, or `.max_marginal_relevance_search(...)` with no `k=`/`top_k=` keyword argument.
+- **Fix:** `vectorstore.similarity_search(query, k=5)`.
+- **Rationale:** "Unbounded retrieval means an unbounded, unpredictable amount of context gets stuffed into the prompt — cost and latency vary per query with no ceiling, the same failure shape as an unbounded agent loop. Pass an explicit k= limit."
+- **Scope note:** deliberately excludes a retriever's `.get_relevant_documents(...)` method — in LangChain that call takes no `k=` at the call site at all (it's configured on the retriever object via `search_kwargs`), a different detection shape not covered here. Also kwarg-only, like AI_LLM_001/002: a positional `similarity_search(query, 5)` is not flagged.
+
 ---
 
 ## Planned (not started)
 
-### AI_LLM_003 — No error handling around LLM calls
-- **Severity:** WARNING
-- **Checks:** an LLM API call with no enclosing `try/except` anywhere in its function.
-- **Fix:** wrap in `try/except (RateLimitError, APITimeoutError, APIError)`.
-- **Rationale:** "LLM APIs fail more often and in more varied ways than typical REST calls — rate limits, timeouts, content filtering — and an uncaught exception from a single LLM call takes down the entire request path around it."
-
-### AI_RAG_003 — Unbounded retrieval
-- **Severity:** WARNING
-- **Checks:** a retriever call (`.similarity_search(...)`, `.get_relevant_documents(...)`) with no `k=`/`top_k=` limit.
-- **Fix:** `vectorstore.similarity_search(query, k=5)`.
-- **Rationale:** "Unbounded retrieval means an unbounded, unpredictable amount of context gets stuffed into the prompt — cost and latency vary per query with no ceiling, the same failure shape as an unbounded agent loop."
+Nothing currently queued — the rule set now covers model/temperature pinning, error handling, structured output, RAG metadata/attribution/retrieval limits, agent loop bounds, credentials, and prompt externalization. Next candidates would come from a new category (e.g. cost/token-budget checks) rather than filling gaps in the existing ones.

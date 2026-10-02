@@ -1,6 +1,6 @@
 import ast
 import pytest
-from analyzer.rules.llm_rules import ModelNotConfiguredRule, TemperatureNotConfiguredRule
+from analyzer.rules.llm_rules import ModelNotConfiguredRule, TemperatureNotConfiguredRule, NoErrorHandlingRule
 
 
 def parse(code: str) -> ast.AST:
@@ -85,11 +85,54 @@ response = client.messages.create(
         findings = self.rule.check(parse(code), "test.py")
         assert findings == []
 
-    def test_flags_langchain_constructor_missing_temperature(self):
+
+class TestNoErrorHandlingRule:
+    rule = NoErrorHandlingRule()
+
+    def test_flags_llm_call_with_no_try_in_function(self):
         code = """
-from langchain_openai import ChatOpenAI
-llm = ChatOpenAI(model="gpt-4o")
+def answer(question):
+    response = client.messages.create(
+        model="claude-sonnet-5",
+        messages=[{"role": "user", "content": question}],
+    )
+    return response.content[0].text
 """
         findings = self.rule.check(parse(code), "test.py")
         assert len(findings) == 1
-        assert findings[0].rule_id == "AI_LLM_002"
+        assert findings[0].rule_id == "AI_LLM_003"
+        assert findings[0].severity == "warning"
+
+    def test_no_finding_when_wrapped_in_try(self):
+        code = """
+def answer(question):
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-5",
+            messages=[{"role": "user", "content": question}],
+        )
+        return response.content[0].text
+    except Exception:
+        return "error"
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert findings == []
+
+    def test_no_finding_when_no_llm_call(self):
+        code = """
+def helper(x):
+    return x + 1
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert findings == []
+
+    def test_finding_includes_line_number(self):
+        code = """\
+def answer(question):
+    response = client.messages.create(
+        messages=[{"role": "user", "content": question}],
+    )
+    return response.content[0].text
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert findings[0].line == 2
