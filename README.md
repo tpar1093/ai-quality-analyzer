@@ -1,5 +1,7 @@
 # ai-quality-analyzer
 
+[![CI](https://github.com/tpar1093/ai-quality-analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/tpar1093/ai-quality-analyzer/actions/workflows/ci.yml)
+
 Static analysis for LLM and RAG applications — rule-based quality checking inspired by automotive tools like MXAM and Model Advisor.
 
 Scans Python source files using AST analysis and reports violations as structured findings with rule ID, severity, rationale, and location.
@@ -16,6 +18,10 @@ Scans Python source files using AST analysis and reports violations as structure
 | `AI_RAG_001` | Retrieved documents strip source metadata | ERROR |
 | `AI_RAG_002` | Generated answer missing source attribution | WARNING |
 | `AI_AGENT_001` | Agent workflow has no maximum step limit | ERROR |
+| `AI_SECRET_001` | Credential passed as a hardcoded string literal | ERROR |
+| `AI_PROMPT_001` | System prompt is hardcoded inline rather than externalized | WARNING |
+
+Full spec for every rule (what it checks, the fix, the exact rationale) lives in [`RULES.md`](RULES.md), including rules not yet implemented.
 
 ---
 
@@ -33,6 +39,32 @@ python -m analyzer scan ./my_app --format json
 ```
 
 Exit code `0` = no findings. Exit code `1` = findings found. Suitable for use in CI pipelines.
+
+---
+
+## Using it as a CI gate in your own project
+
+Install it as a dependency, then run it as a step in your pipeline — it fails the build on any finding via its exit code, the same contract this repo's own [`ci.yml`](.github/workflows/ci.yml) relies on.
+
+```yaml
+# .github/workflows/ai-quality.yml
+name: AI Quality Gate
+
+on: [pull_request]
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install git+https://github.com/tpar1093/ai-quality-analyzer.git
+      - run: ai-quality-analyzer scan ./src
+```
+
+Swap `./src` for the path to your actual application code. A pre-commit hook is a lighter-weight alternative (catches issues before the commit even lands), but it's skippable with `--no-verify` — CI is the version nobody can bypass.
 
 ---
 
@@ -59,7 +91,7 @@ python -m analyzer scan ./examples/bad_app
   Finding  : List comprehension over 'raw_docs' discards document metadata.
   ...
 
-Total: 6 finding(s)
+Total: 8 finding(s)
 ```
 
 The `examples/good_app/` version of the same application passes all checks.
@@ -75,7 +107,9 @@ analyzer/
 │   ├── llm_rules.py     # AI_LLM_001, AI_LLM_002
 │   ├── output_rules.py  # AI_OUTPUT_001
 │   ├── rag_rules.py     # AI_RAG_001, AI_RAG_002
-│   └── agent_rules.py   # AI_AGENT_001
+│   ├── agent_rules.py   # AI_AGENT_001
+│   ├── security_rules.py # AI_SECRET_001
+│   └── prompt_rules.py  # AI_PROMPT_001
 ├── scanner.py           # Walks .py files, applies rules, collects findings
 ├── reporter.py          # Terminal (ANSI color) and JSON formatters
 └── __main__.py          # CLI entry point

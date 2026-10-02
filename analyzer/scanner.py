@@ -6,6 +6,8 @@ from .rules.llm_rules import ModelNotConfiguredRule, TemperatureNotConfiguredRul
 from .rules.output_rules import UnstructuredOutputRule
 from .rules.rag_rules import MetadataStrippedRule, SourceAttributionMissingRule
 from .rules.agent_rules import UnboundedAgentLoopRule
+from .rules.security_rules import HardcodedCredentialRule
+from .rules.prompt_rules import HardcodedSystemPromptRule
 
 ALL_RULES: list[Rule] = [
     ModelNotConfiguredRule(),
@@ -14,6 +16,8 @@ ALL_RULES: list[Rule] = [
     MetadataStrippedRule(),
     SourceAttributionMissingRule(),
     UnboundedAgentLoopRule(),
+    HardcodedCredentialRule(),
+    HardcodedSystemPromptRule(),
 ]
 
 

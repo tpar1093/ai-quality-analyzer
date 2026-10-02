@@ -9,10 +9,13 @@ Violations:
   AI_RAG_001  — list comprehension strips source metadata
   AI_RAG_002  — answer() returns raw response text, no sources
   AI_AGENT_001 — unbounded while True loop in run_agent()
+  AI_SECRET_001 — api_key= passed as a hardcoded string literal
+  AI_PROMPT_001 — system prompt hardcoded inline instead of externalized
 """
 from anthropic import Anthropic
 
-client = Anthropic()
+# AI_SECRET_001: hardcoded credential instead of os.getenv(...)
+client = Anthropic(api_key="sk-ant-api03-fake-key-for-demo-purposes-only")
 
 
 def retrieve(query: str) -> list:
@@ -28,8 +31,14 @@ def answer(question: str, docs: list) -> str:
     context = "\n".join(docs)
     # AI_LLM_001: missing model=
     # AI_LLM_002: missing temperature=
+    # AI_PROMPT_001: long system prompt embedded directly in the call
     response = client.messages.create(
         max_tokens=256,
+        system=(
+            "You are a customer support assistant for an e-commerce platform. "
+            "Always be polite, concise, and never make promises about refunds or "
+            "shipping dates that you cannot verify. If you are unsure, say so."
+        ),
         messages=[{"role": "user", "content": f"Context:\n{context}\n\nQuestion: {question}"}],
     )
     # AI_OUTPUT_001: raw string, no schema or json.loads
