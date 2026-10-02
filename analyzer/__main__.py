@@ -21,6 +21,13 @@ def main() -> None:
         default="text",
         help="Output format (default: text).",
     )
+    scan_cmd.add_argument(
+        "--rule",
+        action="append",
+        dest="rule_ids",
+        metavar="RULE_ID",
+        help="Only run this rule (e.g. AI_LLM_001). Repeat to run a subset of rules.",
+    )
 
     args = parser.parse_args()
 
@@ -30,7 +37,18 @@ def main() -> None:
             print(f"Error: path does not exist: {target}", file=sys.stderr)
             sys.exit(2)
 
-        findings = scan_directory(target) if target.is_dir() else scan_file(target)
+        rules = ALL_RULES
+        if args.rule_ids:
+            known_ids = {r.rule_id for r in ALL_RULES}
+            unknown = [rid for rid in args.rule_ids if rid not in known_ids]
+            if unknown:
+                print(f"Error: unknown rule ID(s): {', '.join(unknown)}", file=sys.stderr)
+                print(f"Available rule IDs: {', '.join(sorted(known_ids))}", file=sys.stderr)
+                sys.exit(2)
+            selected = set(args.rule_ids)
+            rules = [r for r in ALL_RULES if r.rule_id in selected]
+
+        findings = scan_directory(target, rules) if target.is_dir() else scan_file(target, rules)
 
         if args.format == "json":
             print(format_json(findings))

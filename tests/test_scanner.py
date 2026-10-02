@@ -83,6 +83,39 @@ def test_scan_directory_skips_non_python_files(tmp_path: Path):
     assert findings == []
 
 
+def test_scan_directory_skips_venv_directory(tmp_path: Path):
+    venv_pkg = tmp_path / ".venv" / "lib" / "site-packages"
+    venv_pkg.mkdir(parents=True)
+    (venv_pkg / "dep.py").write_text(BAD_CODE)
+    (tmp_path / "app.py").write_text(CLEAN_CODE)
+    findings = scan_directory(tmp_path)
+    assert findings == []
+
+
+def test_scan_directory_skips_pycache_directory(tmp_path: Path):
+    pycache = tmp_path / "__pycache__"
+    pycache.mkdir()
+    (pycache / "app.cpython-311.py").write_text(BAD_CODE)
+    findings = scan_directory(tmp_path)
+    assert findings == []
+
+
+def test_scan_directory_skips_git_directory(tmp_path: Path):
+    git_dir = tmp_path / ".git" / "hooks"
+    git_dir.mkdir(parents=True)
+    (git_dir / "pre-commit.py").write_text(BAD_CODE)
+    findings = scan_directory(tmp_path)
+    assert findings == []
+
+
+def test_scan_directory_still_scans_normal_subdirs(tmp_path: Path):
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    (app_dir / "main.py").write_text(BAD_CODE)
+    findings = scan_directory(tmp_path)
+    assert len(findings) > 0
+
+
 def test_all_rules_list_has_ten_entries():
     assert len(ALL_RULES) == 10
     rule_ids = [r.rule_id for r in ALL_RULES]
@@ -168,3 +201,45 @@ def test_cli_error_on_nonexistent_path():
         cwd=str(Path(__file__).parent.parent),
     )
     assert result.returncode != 0
+
+
+def test_cli_rule_filter_runs_only_that_rule(tmp_path):
+    import subprocess, sys
+    target = tmp_path / "bad.py"
+    target.write_text(BAD_CODE)
+    result = subprocess.run(
+        [sys.executable, "-m", "analyzer", "scan", str(target), "--rule", "AI_LLM_001", "--format", "json"],
+        capture_output=True, text=True,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    data = json.loads(result.stdout)
+    rule_ids = {d["rule_id"] for d in data}
+    assert rule_ids == {"AI_LLM_001"}
+
+
+def test_cli_rule_filter_accepts_multiple_rules(tmp_path):
+    import subprocess, sys
+    target = tmp_path / "bad.py"
+    target.write_text(BAD_CODE)
+    result = subprocess.run(
+        [sys.executable, "-m", "analyzer", "scan", str(target),
+         "--rule", "AI_LLM_001", "--rule", "AI_RAG_001", "--format", "json"],
+        capture_output=True, text=True,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    data = json.loads(result.stdout)
+    rule_ids = {d["rule_id"] for d in data}
+    assert rule_ids == {"AI_LLM_001", "AI_RAG_001"}
+
+
+def test_cli_rule_filter_errors_on_unknown_rule_id(tmp_path):
+    import subprocess, sys
+    target = tmp_path / "bad.py"
+    target.write_text(BAD_CODE)
+    result = subprocess.run(
+        [sys.executable, "-m", "analyzer", "scan", str(target), "--rule", "AI_NOT_REAL"],
+        capture_output=True, text=True,
+        cwd=str(Path(__file__).parent.parent),
+    )
+    assert result.returncode == 2
+    assert "AI_NOT_REAL" in result.stderr

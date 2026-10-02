@@ -40,9 +40,12 @@ python -m analyzer scan ./my_app/rag.py
 
 # JSON output (for CI or tooling integration)
 python -m analyzer scan ./my_app --format json
+
+# Run only specific rules (repeat --rule for more than one)
+python -m analyzer scan ./my_app --rule AI_SECRET_001 --rule AI_PROMPT_001
 ```
 
-Exit code `0` = no findings. Exit code `1` = findings found. Suitable for use in CI pipelines.
+Exit code `0` = no findings. Exit code `1` = findings found. Suitable for use in CI pipelines. An unrecognized `--rule` ID exits `2` and lists the valid IDs.
 
 ---
 
@@ -142,6 +145,10 @@ For example, `AI_LLM_001` walks the AST looking for:
 The `messages=` kwarg requirement in the second check prevents false positives on unrelated `.create()` calls like `db.records.create(name="test")`.
 
 `AI_AGENT_001` uses a custom `_walk_no_nested_fns()` traversal that stops at nested function/class boundaries — so a `while True:` inside a nested callback is attributed to that inner function, not its parent.
+
+### Which files get scanned
+
+Scanning a directory recursively globs for `*.py` and parses every match — there's no content sniffing to decide "is this file AI-related" ahead of time; each rule's own AST pattern is the filter (a file with no LLM-call-shaped code simply produces no findings). What *is* excluded by name: any path under a `.`-prefixed directory (`.venv`, `.git`, ...) or a known non-source directory (`__pycache__`, `venv`, `env`, `build`, `dist`, `node_modules`, `site-packages`). Without that exclusion, `scan .` from a project root would also parse every vendored dependency in your virtualenv — scanning this repo's own `.venv` turns up 747 `.py` files, almost all of them pip/setuptools internals. Scanning a single file with `scan path/to/file.py` always runs on exactly that file, with no exclusion logic applied.
 
 ---
 

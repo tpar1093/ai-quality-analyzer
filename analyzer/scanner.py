@@ -1,6 +1,15 @@
 import ast
 from pathlib import Path
 
+EXCLUDED_DIR_NAMES: set[str] = {
+    "__pycache__", "node_modules", "site-packages",
+    "build", "dist", "venv", "env",
+}
+
+
+def _is_excluded_dir(name: str) -> bool:
+    return name in EXCLUDED_DIR_NAMES or name.startswith(".")
+
 from .rules.base import Finding, Rule
 from .rules.llm_rules import ModelNotConfiguredRule, TemperatureNotConfiguredRule, NoErrorHandlingRule
 from .rules.output_rules import UnstructuredOutputRule
@@ -38,5 +47,8 @@ def scan_file(path: Path, rules: list[Rule] = ALL_RULES) -> list[Finding]:
 def scan_directory(path: Path, rules: list[Rule] = ALL_RULES) -> list[Finding]:
     findings: list[Finding] = []
     for py_file in sorted(path.rglob("*.py")):
+        relative_dirs = py_file.relative_to(path).parts[:-1]
+        if any(_is_excluded_dir(part) for part in relative_dirs):
+            continue
         findings.extend(scan_file(py_file, rules))
     return findings
