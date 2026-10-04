@@ -9,14 +9,65 @@ Each entry: **what it checks** (exact AST pattern) → **fix** → **rationale**
 
 ---
 
+## Scope boundary: hand-rolled orchestration only
+
+Every rule below shares one unstated assumption: **the agent loop and the
+retrieval pipeline are written in plain Python, in the scanned project's own
+source** — a `while True:` you wrote, a `vectorstore.similarity_search()`
+call you made. That assumption holds for a lot of real code — it's exactly
+what let this rule set catch five genuine unbounded-retry loops in BabyAGI
+and real missing-config bugs in `cafe-agent` (see the "Validated against
+real code" notes throughout this file). It stops holding the moment a
+project adopts a framework that owns the orchestration instead.
+
+**Confirmed by testing against `langchain-ai/chat-langchain`** (LangChain's
+own production RAG/support agent, ~2,865 lines): the scan returned **zero**
+`AI_RAG_*` and **zero** `AI_AGENT_001` findings. That is not evidence the
+code is unusually safe — tracing through it showed the two risks these rules
+check for didn't disappear, they *relocated* to places this rule set doesn't
+look:
+
+- **The agent loop.** The app calls `define_deep_agent(tools=..., middleware=...)`
+  — a LangGraph builder. LangGraph runs its own execution graph internally,
+  inside the `langgraph`/`managed_deepagents` *package* — code that lives in
+  an installed dependency, not in the scanned repository at all. There is no
+  `while True:` anywhere in the source for `AI_AGENT_001` to find, not
+  because the loop doesn't exist, but because it isn't in the part of the
+  code this tool parses. The real question — is there a step/recursion cap —
+  moved into whatever config is passed to the framework call.
+- **The retrieval.** Documents aren't fetched into a `List[Document]` the
+  orchestration code manipulates. Retrieval is one of several `@tool`-decorated
+  functions (e.g. `search_support_articles(query: str) -> str`) the LLM
+  decides to call at runtime; the result is a bare string folded back into
+  the conversation. There is no list comprehension over retrieved objects for
+  `AI_RAG_001` to inspect, because that data structure never exists in the
+  orchestration code — the shape `AI_RAG_001`/`002`/`003` look for simply
+  doesn't occur in this architecture.
+
+**What this does — and doesn't — mean:**
+- It does **not** mean these rules are wrong or broken. They're exactly as
+  accurate on hand-rolled code as the BabyAGI/cafe-agent results show.
+- It does **not** mean a framework-based agent is safe from these risks —
+  only that checking for them here would require different checks entirely:
+  inspecting the kwargs of a framework builder call (does it set a recursion
+  limit?) and inspecting the *bodies* of `@tool`-decorated functions (do they
+  return raw text with no source attribution?) instead of inspecting
+  retriever call sites and raw loops.
+- Closing this gap is a new, separate design effort — a LangGraph-aware
+  agent-safety check and a tool-function attribution check are different
+  enough in shape from the current rules that they don't belong as a patch
+  to `AI_AGENT_001`/`AI_RAG_001`. Tracked as a known gap, not yet built.
+
+---
+
 ## Implemented
 
 ### AI_LLM_001 — LLM model identifier not explicitly configured
 - **Severity:** ERROR
-- **Checks:** an LLM constructor call (`ChatOpenAI`, `ChatAnthropic`, etc.) or a raw SDK call to `.create()`, `.invoke()`, `.generate()`, `.run()`, `.complete()`, or `.chat()` carrying a `messages=`/`prompt=`/`inputs=`/`input=` kwarg, missing a `model=` kwarg.
+- **Checks:** an LLM constructor call (`ChatOpenAI`, `ChatAnthropic`, etc.), a raw SDK method call (`.create()`, `.invoke()`, `.generate()`, `.run()`, `.complete()`, `.chat()`), or a bare call to a known LLM library function (`completion`/`acompletion` — LiteLLM's top-level API) — in the method and bare-function cases, only when it also carries a `messages=`/`prompt=`/`inputs=`/`input=` kwarg, missing a `model=` kwarg.
 - **Fix:** pass `model="claude-sonnet-5"` (or equivalent) explicitly.
 - **Rationale:** "Relying on a provider default model causes silent behavior changes when provider defaults are updated. Always pin the model name."
-- **Validated against real code:** `.chat()` was added to the method allowlist after testing against a real Ollama-based agent (`ollama.chat(model=..., messages=...)`) — the original allowlist (`create`/`invoke`/`generate`/`run`/`complete`) missed it entirely, leaving AI_LLM_001/002/003/004 blind to that call. The required `messages=`-style kwarg still guards against false positives on unrelated `.chat()` methods (a chat-room API, say).
+- **Validated against real code:** `.chat()` was added after testing against a real Ollama-based agent (`ollama.chat(model=..., messages=...)`) — the original method allowlist (`create`/`invoke`/`generate`/`run`/`complete`) missed it entirely. `completion`/`acompletion` were added after testing against BabyAGI, whose LLM calls go through LiteLLM's bare `completion(model=..., messages=...)` function rather than a method — a different call *shape* (no attribute access at all), not just a different name. The key distinction from guessing at arbitrary wrapper-function names (which is unbounded and unreliable): both additions are specific, stable, public APIs of named libraries, not a heuristic over user-chosen names. A user's own wrapper function (e.g. `gpt_call()` that internally calls `completion(...)`) isn't itself recognized — but that's fine, because the finding correctly lands on the wrapper's own definition (where `completion(...)` is actually called), which is the right place to fix it once rather than at every call site.
 
 ### AI_LLM_002 — LLM temperature not explicitly configured
 - **Severity:** WARNING
@@ -45,10 +96,12 @@ Each entry: **what it checks** (exact AST pattern) → **fix** → **rationale**
 
 ### AI_AGENT_001 — Agent workflow has no maximum step limit
 - **Severity:** ERROR
-- **Checks:** every literal `while True:` inside a function body (not inside a nested function/class — traversal stops at those boundaries), *except* a loop that blocks on `input()` somewhere in its own body.
+- **Checks:** every literal `while True:` inside a function body (not inside a nested function/class — traversal stops at those boundaries), *except* a loop that blocks on `input()` or paces itself with a `sleep()` call somewhere in its own body.
 - **Fix:** replace with `for step in range(MAX_STEPS):` or an explicit counter with a bounded exit condition.
 - **Rationale:** "Unbounded agent loops (while True) can run indefinitely, exhausting tokens and budget. Define an explicit MAX_STEPS or use a bounded range loop."
-- **Validated against real code:** a real interactive agent (`while True: user_input = input(...); ...; while True: response = llm.chat(...)`) exposed two bugs at once. First, the rule reported only the *first* `while True:` found per function — so the outer REPL loop (bounded, each iteration gated by a human typing) got flagged while the inner, genuinely unbounded tool-calling loop never did. That early-exit is now removed; every qualifying loop in a function is reported. Second, "bounded by a human typing" and "bounded by nothing" are different risk profiles, so a loop that blocks on `input()` anywhere in its body is now exempted — this is a documented heuristic, not perfect: a loop with a *nested* inner loop that happens to call `input()` somewhere deep inside would also be exempted at the outer level, since the check doesn't stop at nested `while`/`for` boundaries (only at nested function/class boundaries, same as elsewhere in this codebase).
+- **Validated against real code (round 1 — cafe-agent):** a real interactive agent (`while True: user_input = input(...); ...; while True: response = llm.chat(...)`) exposed two bugs at once. First, the rule reported only the *first* `while True:` found per function — so the outer REPL loop (bounded, each iteration gated by a human typing) got flagged while the inner, genuinely unbounded tool-calling loop never did. That early-exit is now removed; every qualifying loop in a function is reported. Second, "bounded by a human typing" and "bounded by nothing" are different risk profiles, so a loop that blocks on `input()` anywhere in its body is now exempted.
+- **Validated against real code (round 2 — BabyAGI):** testing against a real multi-agent framework surfaced the opposite kind of bug — two loops polling a third-party job-status API (`while True: status = check(...); if done: break; time.sleep(30)`) got flagged under an AI-specific rule ID with a rationale about exhausting LLM tokens, despite having no LLM call anywhere in them. Meanwhile, five *genuine* unbounded-retry loops in the same codebase (`while True: response = completion(...); try: json.loads(...); except: continue` — no backoff, retries forever on bad output) correctly kept firing. The distinguishing signal isn't "does this loop touch an LLM" (that would require resolving arbitrary cross-file wrapper functions, which isn't reliably possible); it's that a polling loop paces itself with `sleep()` and a runaway retry loop doesn't — so a loop containing `sleep()` (via `time.sleep(...)` or a bare `sleep(...)` import) is now exempted, symmetric with the `input()` check.
+- **Scope note:** both exemptions check the loop's own body (not nested function/class boundaries) but do *not* stop at nested `while`/`for` boundaries — a loop with a nested inner loop that happens to call `input()` or `sleep()` somewhere deep inside would also be exempted at the outer level. Documented, not fixed, since it hasn't shown up as a real false negative yet.
 
 ---
 
@@ -91,4 +144,11 @@ Each entry: **what it checks** (exact AST pattern) → **fix** → **rationale**
 
 ## Planned (not started)
 
-Nothing currently queued — the rule set now covers model/temperature pinning, error handling, structured output, RAG metadata/attribution/retrieval limits, agent loop bounds, credentials, and prompt externalization. Next candidates would come from a new category (e.g. cost/token-budget checks) rather than filling gaps in the existing ones.
+The rule set covers model/temperature/max_tokens pinning, error handling, structured output, RAG metadata/attribution/retrieval limits, agent loop bounds, credentials, and prompt externalization — for hand-rolled orchestration (see "Scope boundary" above). Real candidates for what's next, in rough order of how concrete they are:
+
+1. **Framework-aware agent safety.** Does a `define_deep_agent(...)`/LangGraph `.compile()` call set a recursion/step limit? Confirmed real gap (see "Scope boundary" above) — the most concrete item here, since we have a real repo (`chat-langchain`) that exercises it.
+2. **Framework-aware RAG attribution.** Does a `@tool`-decorated function that performs a search return source-attributed results? Same real gap, different shape — needs to inspect tool-function bodies rather than retriever call sites.
+3. **Prompt-injection surface.** Is untrusted user input concatenated directly into a system prompt or tool-call argument with no separation? Closer to taint analysis (tracking where a value *came from*) than pattern matching — no real-code validation yet.
+4. **Audit-logging coverage.** Is every LLM call logged with enough context (prompt, response, model version, latency) to reconstruct an incident? No real-code validation yet.
+
+None of these are a quick allowlist addition like the `.chat()`/`init_chat_model`/`completion()` fixes — each needs its own design pass before implementation, the same care the original 11 rules got.

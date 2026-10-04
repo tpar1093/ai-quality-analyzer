@@ -28,6 +28,8 @@ Scans Python source files using AST analysis and reports violations as structure
 
 Full spec for every rule (what it checks, the fix, the exact rationale) lives in [`RULES.md`](RULES.md).
 
+**Scope:** these rules assume hand-rolled orchestration — a loop and a retrieval call you wrote yourself. Tested against `cafe-agent` and BabyAGI (both hand-rolled), they caught real bugs. Tested against a LangGraph-based "deep agent" (`chat-langchain`), the agent-loop and RAG rules found nothing — not because the code is safer, but because LangGraph owns the loop internally and retrieval happens through tool-calling rather than an explicit retriever call, so the patterns these rules look for don't occur in that architecture. See the "Scope boundary" section at the top of [`RULES.md`](RULES.md) for the full explanation.
+
 ---
 
 ## Usage

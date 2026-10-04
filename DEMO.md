@@ -65,7 +65,23 @@ ai-quality-analyzer scan ./examples/good_app
 > "Same application, rewritten to satisfy every rule. Zero findings, exit
 > code 0."
 
-### 5. Show it's already wired into CI (30s)
+### 5. Prove it survives contact with real code (45s) — the credibility moment
+
+> "Toy examples prove a rule *can* fire. They don't prove it fires
+> *correctly*. So I ran this against real projects I didn't write."
+
+Open `RULES.md`, scroll to a "Validated against real code" note (e.g. under
+`AI_AGENT_001`).
+
+> "Testing against my own cafe-agent project found a real blind spot — Ollama's
+> `.chat()` call wasn't in the method allowlist, so four rules missed it
+> entirely. Testing against BabyAGI, a well-known open-source agent framework,
+> found the opposite problem: the agent-loop rule flagged an HTTP job-polling
+> loop that had nothing to do with LLMs at all, while five *genuine* unbounded
+> retry loops in the same codebase correctly kept firing. Both are documented
+> and fixed, with the real code that exposed them, right in the spec."
+
+### 6. Show it's already wired into CI (30s)
 
 Open `.github/workflows/ci.yml` or the Actions tab on GitHub.
 
@@ -73,7 +89,7 @@ Open `.github/workflows/ci.yml` or the Actions tab on GitHub.
 > pull requests on this repo. Anyone adopting this in their own project drops
 > in about six lines of YAML — it's in the README."
 
-### 6. Mention the design, if asked (30s)
+### 7. Mention the design, if asked (30s)
 
 > "Zero runtime dependencies — stdlib only, `ast`/`argparse`/`json`. Every
 > rule is an independent class with a `check(tree, filepath) -> list[Finding]`
@@ -86,5 +102,5 @@ Open `.github/workflows/ci.yml` or the Actions tab on GitHub.
 ## Fallback one-liner (no setup, elevator-pitch version)
 
 ```bash
-ai-quality-analyzer scan ./examples/bad_app && echo CLEAN || echo "10 findings — see above"
+ai-quality-analyzer scan ./examples/bad_app && echo CLEAN || echo "11 findings — see above"
 ```

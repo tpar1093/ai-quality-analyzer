@@ -47,6 +47,15 @@ llm = ChatOpenAI(temperature=0.0)
         assert len(findings) == 1
         assert findings[0].rule_id == "AI_LLM_001"
 
+    def test_flags_init_chat_model_missing_model(self):
+        code = """
+from langchain.chat_models import init_chat_model
+llm = init_chat_model(temperature=0)
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert len(findings) == 1
+        assert findings[0].rule_id == "AI_LLM_001"
+
     def test_no_finding_for_non_llm_create_call(self):
         code = """
 record = db.records.create(name="test", value=42)
@@ -89,6 +98,14 @@ response = client.messages.create(
 """
         findings = self.rule.check(parse(code), "test.py")
         assert findings == []
+
+    def test_flags_init_chat_model_missing_temperature(self):
+        code = """
+default_model = init_chat_model(model="claude-sonnet-5")
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert len(findings) == 1
+        assert findings[0].rule_id == "AI_LLM_002"
 
 
 class TestNoErrorHandlingRule:
@@ -194,3 +211,18 @@ response = ollama.chat(model="llama3.2", messages=messages, tools=TOOLS)
         findings = self.rule.check(parse(code), "test.py")
         assert len(findings) == 1
         assert findings[0].rule_id == "AI_LLM_004"
+
+    def test_flags_litellm_bare_completion_call(self):
+        code = """
+response = completion(model="gpt-4o", messages=messages)
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert len(findings) == 1
+        assert findings[0].rule_id == "AI_LLM_004"
+
+    def test_no_finding_for_unrelated_bare_completion_call(self):
+        code = """
+progress = completion(tasks)
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert findings == []

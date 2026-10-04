@@ -25,6 +25,24 @@ def _is_human_paced(while_node: ast.While) -> bool:
     return any(_is_blocking_input_call(n) for n in _walk_no_nested_fns(while_node))
 
 
+def _is_sleep_call(node: ast.AST) -> bool:
+    if not isinstance(node, ast.Call):
+        return False
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr == "sleep"
+    if isinstance(node.func, ast.Name):
+        return node.func.id == "sleep"
+    return False
+
+
+def _is_rate_limited(while_node: ast.While) -> bool:
+    """True if the loop paces itself with a sleep(...) call somewhere in its
+    own body — the idiomatic shape of polling an external job until it
+    completes, a different risk profile than an unbounded retry that
+    hammers an LLM call immediately on every failure."""
+    return any(_is_sleep_call(n) for n in _walk_no_nested_fns(while_node))
+
+
 class UnboundedAgentLoopRule(Rule):
     rule_id = "AI_AGENT_001"
     title = "Agent workflow has no maximum step limit"
@@ -40,7 +58,7 @@ class UnboundedAgentLoopRule(Rule):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
             for child in _walk_no_nested_fns(node):
-                if _is_while_true(child) and not _is_human_paced(child):
+                if _is_while_true(child) and not _is_human_paced(child) and not _is_rate_limited(child):
                     findings.append(self._finding(
                         f"Function '{node.name}' contains an unbounded 'while True' loop "
                         f"with no step limit.",

@@ -111,6 +111,45 @@ def run_agent():
         assert findings[0].rule_id == "AI_AGENT_001"
         assert findings[0].line == 6
 
+    def test_no_finding_for_job_polling_loop_with_sleep(self):
+        code = """
+def wait_for_report(report_id):
+    while True:
+        status = check_status(report_id)
+        if status == "done":
+            break
+        time.sleep(30)
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert findings == []
+
+    def test_no_finding_for_job_polling_loop_with_bare_sleep_import(self):
+        code = """
+from time import sleep
+
+def wait_for_report(report_id):
+    while True:
+        status = check_status(report_id)
+        if status == "done":
+            break
+        sleep(30)
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert findings == []
+
+    def test_flags_retry_loop_with_no_sleep_and_no_input(self):
+        code = """
+def ask_until_valid(prompt):
+    while True:
+        response = call_llm(prompt)
+        try:
+            return json.loads(response)
+        except Exception:
+            continue
+"""
+        findings = self.rule.check(parse(code), "test.py")
+        assert len(findings) == 1
+
     def test_flags_both_unbounded_loops_in_same_function(self):
         code = """
 def run_agent():
